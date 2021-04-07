@@ -6,7 +6,9 @@
 
  (2) ApplcationContext: BeanFactory的子接口。加载配置文件时就创建对象。
 
- (3) ApplcationContext的实现类   ![image-20210407143553768](spring5\image-20210407143553768.png)
+ (3) ApplcationContext的实现类 
+
+![image-20210407143553768](.\spring5\image-20210407143553768.png)
 
 
 
