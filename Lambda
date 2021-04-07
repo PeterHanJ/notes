@@ -1,0 +1,126 @@
+# Lambda
+
+
+
+Comparator里的一个静态方法，接受一个函数，返回一个Comparator对象
+
+```Java
+/**
+     * Accepts a function that extracts a {@link java.lang.Comparable
+     * Comparable} sort key from a type {@code T}, and returns a {@code
+     * Comparator<T>} that compares by that sort key.
+     *
+     * <p>The returned comparator is serializable if the specified function
+     * is also serializable.
+     *
+     * @apiNote
+     * For example, to obtain a {@code Comparator} that compares {@code
+     * Person} objects by their last name,
+     *
+     * <pre>{@code
+     *     Comparator<Person> byLastName = Comparator.comparing(Person::getLastName);
+     * }</pre>
+     *
+     * @param  <T> the type of element to be compared
+     * @param  <U> the type of the {@code Comparable} sort key
+     * @param  keyExtractor the function used to extract the {@link
+     *         Comparable} sort key
+     * @return a comparator that compares by an extracted key
+     * @throws NullPointerException if the argument is null
+     * @since 1.8
+     */
+    public static <T, U extends Comparable<? super U>> Comparator<T> comparing(
+            Function<? super T, ? extends U> keyExtractor)
+    {
+        Objects.requireNonNull(keyExtractor);
+        return (Comparator<T> & Serializable)
+            (c1, c2) -> keyExtractor.apply(c1).compareTo(keyExtractor.apply(c2));
+    }
+```
+
+**通过Comparator的comparing静态方法来排序**
+
+```java
+/**
+  * java 1.8
+  * use Comparator static method comparing
+  * comparing accept function and return a Comparator object
+  */
+//Pass in lambda function into 'comparing'
+//invetory.sort(Comparator.comparing((apple)->apple.getWeight()));
+
+//use method reference
+invetory.sort(Comparator.comparing(Apple::getWeight));
+System.out.println(invetory.toString());
+```
+
+**逆序**
+
+```jav
+//reverse
+invetory.sort(Comparator.comparing(Apple::getWeight).reversed());
+System.out.println(invetory.toString());
+```
+
+**多个比较条件混合**
+
+```jav
+Apple f = new Apple(18);
+f.setCountry("China");
+Apple g = new Apple(18);
+g.setCountry("Japan");
+Apple h = new Apple(18);
+h.setCountry("Australia");
+invetory.add(f);
+invetory.add(g);
+invetory.add(h);
+invetory.sort(Comparator.comparing(Apple::getWeight).thenComparing(Apple::getCountry));
+System.out.println(invetory.toString());
+```
+
+**函数复合**
+
+```java
+Function<Integer,Integer> f = x->x+1;
+Function<Integer,Integer> g = x->x*x;
+/**
+         * andThen
+         * run f, then run g
+         */
+Function<Integer,Integer> h = f.andThen(g);
+
+Integer result1 = h.apply(2); // (2+1) = 3 then 3*3 = 9;
+System.out.println("f.andThen(g) = " + result1);
+
+/**
+         * compose
+         * run g, run f with the result of g
+         */
+Function<Integer,Integer> j = f.compose(g);// (2*2) = 4 then 4+1 = 5
+Integer result2 = j.apply(2);
+System.out.println("f.compose(g) = " + result2);
+```
+
+
+
+❑ Lambda表达式可以理解为一种匿名函数：它没有名称，但有参数列表、函数主体、返回类型，可能还有一个可以抛出的异常的列表。
+
+❑ Lambda表达式让你可以简洁地传递代码。
+
+❑ 函数式接口就是仅仅声明了一个抽象方法的接口。
+
+❑ 只有在接受函数式接口的地方才可以使用Lambda表达式。
+
+❑ Lambda表达式允许你直接内联，为函数式接口的抽象方法提供实现，并且将整个表达式作为函数式接口的一个实例。
+
+❑ Java 8自带一些常用的函数式接口，放在java.util.function包里，包括Predicate<T>、Function<T, R>、Supplier<T>、Consumer<T>和BinaryOperator<T>，如表3-2所述。
+
+❑ 为了避免装箱操作，对Predicate<T>和Function<T, R>等通用函数式接口的原始类型特化：IntPredicate、IntToLongFunction等。
+
+❑ 环绕执行模式（即在方法所必需的代码中间，你需要执行点儿什么操作，比如资源分配和清理）可以配合Lambda提高灵活性和可重用性。
+
+❑ Lambda表达式所需要代表的类型称为目标类型。
+
+❑ 方法引用让你重复使用现有的方法实现并直接传递它们。
+
+❑ Comparator、Predicate和Function等函数式接口都有几个可以用来结合Lambda表达式的默认方法
