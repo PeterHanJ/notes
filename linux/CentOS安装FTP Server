@@ -1,0 +1,77 @@
+# CentOS安装FTP Server
+
+##  Install vsftpd (ftp server) on CentOS 8
+
+```shell
+Step 1) Install vsftpd using dnf command
+$ sudo dnf install vsftpd
+
+# Start/restart vcftpd service
+$ sudo systemctl start vsftpd
+$ sudo systemctl restart vsftpd
+
+# start service after reboot
+$ sudo systemctl enable vsftpd
+# verify service status
+$ sudo systemctl status vsftpd
+
+Step 2) Create a ftp user and its directory
+$ sudo adduser ftpuser
+$ sudo passwd ftpuser
+# create user folder
+$ sudo mkdir -p /home/ftpuser/ftp_dir
+$ sudo chmod -R 750 /home/ftpuser/ftp_dir
+$ sudo chown -R ftpuser: /home/ftpuser/ftp_dir
+#  add FTP user to the /etc/vsftpd/user_list 
+$ sudo bash -c 'echo ftpuser >> /etc/vsftpd/user_list'
+
+Step 3) Configure vsftpd via its configuration file
+# /etc/vsftpd/vsftpd.conf
+# To allow local users to access the FTP server remotely, and block anonymous users
+anonymous_enable=NO
+local_enable=YES
+
+# To grant users rights to run any FTP command & make changes
+write_enable=YES
+
+# restrict users from accessing any files & directories outside their home directories.
+chroot_local_user=YES
+
+# To grant users write access to their respective home directories
+allow_writeable_chroot=YES
+
+# define custom ports to enable Passive FTP connections
+pasv_min_port=30000
+pasv_max_port=31000
+
+# allow the users defined in the /etc/vsftpd/user_list access to the server and block the rest
+userlist_file=/etc/vsftpd/user_list
+userlist_deny=NO
+
+Step 4) Allow ftp server (vsftpd) ports in the firewall
+$ sudo firewall-cmd --permanent --add-port=20-21/tcp
+$ sudo firewall-cmd --permanent --add-port=30000-31000/tcp
+# Reload firewall
+$ sudo firewall-cmd --relo­ad
+
+
+```
+
+## 在阿里云上设定的时候的坑
+
+ 对于Linux下的vsftpd，需添加：pasv_address=公网IP。
+
+> 注意：当使用pasv_address指定公网IP时，必须将监听的IP地址改为IPv4，即：listen=YES，否则vsftpd将返回错误的被动套接字，如：227 Entering Passive Mode (0,0,0,0,34,198). 。而启用IPv4地址时则需要禁用IPv6地址的监听，因为两者互斥。
+
+```shell
+listen=YES        #指定被动模式时的公网IP地址时只能监听在IPv4地址
+listen_ipv6=NO    #与listen冲突，默认监听IPv6地址，当监听在IPv4时IPv6必须禁用，否则vsftpd.service将无法启动
+
+pasv_enable=YES
+pasv_min_port=8900
+pasv_max_port=8909
+pasv_address=47.95.120.253       #指定被动模式时的公网IP地址
+#pasv_addr_resolve=YES
+#pasv_promiscuous=YES
+```
+
