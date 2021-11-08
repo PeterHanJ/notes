@@ -1110,7 +1110,7 @@ OK
 
 ```
 
-### Bitmaps类型
+### Bitmap类型
 
 bitmap 存储的是连续的二进制数字（0 和 1），通过 bitmap, 只需要一个 bit 位来表示某个元素对应的值或者状态，key 就是对应元素本身 。我们知道 8 个 bit 可以组成一个 byte，所以 bitmap 本身会极大的节省储存空间。
 
@@ -1157,4 +1157,533 @@ bitmap 存储的是连续的二进制数字（0 和 1），通过 bitmap, 只需
 (integer) 5
 
 ```
+
+## Redis事务
+
+### 基本概念
+
+**Redis单条命令是保证原子性的. Redis事务不保证原子性。**
+
+**Redis事务没有隔离级别的概念。**
+
+所有命令在事务中没有被直接执行，是有发起执行命令时才会执行。
+
+Reids事务本质,一组命令的集合.一个事务中的所有命令都会被序列化,在事务执行过程中,会按照顺序执行。
+
+- 一次性
+- 顺序性
+- 排他性
+
+```shel
+---队列 set set set ---
+```
+
+### Redis事务过程
+
+- 开启事务	MULTI
+- 命令入队
+- 执行事务   EXEC
+- 放弃事务   DISCARD
+
+```shell
+# 开启执行事务
+127.0.0.1:6379> multi                              # 开启事务
+OK
+127.0.0.1:6379(TX)> set k1 v1                      # 添加命令
+QUEUED
+127.0.0.1:6379(TX)> set k2 v2
+QUEUED
+127.0.0.1:6379(TX)> append k1 "hello"
+QUEUED
+127.0.0.1:6379(TX)> get k1
+QUEUED
+127.0.0.1:6379(TX)> EXEC                           # 执行事务
+1) OK
+2) OK
+3) (integer) 7
+4) "v1hello"
+##################################################################################
+# 放弃事务
+127.0.0.1:6379> MULTI                             # 开启事务
+OK
+127.0.0.1:6379(TX)> set k1 v1                     # 添加命令
+QUEUED
+127.0.0.1:6379(TX)> set k2 v2
+QUEUED
+127.0.0.1:6379(TX)> DISCARD                      # 放弃事务
+OK
+127.0.0.1:6379> get k1                           # set k1 v1 没有被执行
+(nil)
+
+```
+
+### Redis事务异常处理
+
+- 编译错误（命令错误）：整个事务都不会被执行
+- 运行时错误：错误的命令将报错，其他命令正常执行
+
+```shell
+# 命令错误
+127.0.0.1:6379> MULTI
+OK
+127.0.0.1:6379(TX)> ab2 123
+(error) ERR unknown command `ab2`, with args beginning with: `123`,
+127.0.0.1:6379(TX)> set 123
+(error) ERR wrong number of arguments for 'set' command
+127.0.0.1:6379(TX)> set abc 123
+QUEUED
+127.0.0.1:6379(TX)> exec
+(error) EXECABORT Transaction discarded because of previous errors.      # 整个事务都不会被执行
+##################################################################################
+# 运行时错误
+127.0.0.1:6379> set k1 "hello"
+OK
+127.0.0.1:6379> MULTI
+OK
+127.0.0.1:6379(TX)> INCR k1           # 运行时错误。k1字符串无法自增
+QUEUED
+127.0.0.1:6379(TX)> set k2 v2
+QUEUED
+127.0.0.1:6379(TX)> get k2
+QUEUED
+127.0.0.1:6379(TX)> exec                                     # 错误的命令将报错，其他命令继续执行
+1) (error) ERR value is not an integer or out of range       # 运行时错误
+2) OK                                                        # 其他命令继续执行
+3) "v2"
+127.0.0.1:6379> get k2
+"v2"
+
+```
+
+> ## Why Redis does not support roll backs?
+>
+> If you have a relational databases background, the fact that Redis commands can fail during a transaction, but still Redis will execute the rest of the transaction instead of rolling back, may look odd to you.
+>
+> However there are good opinions for this behavior:
+>
+> - Redis commands can fail only if called with a wrong syntax (and the problem is not detectable during the command queueing), or against keys holding the wrong data type: this means that in practical terms a failing command is the result of a programming errors, and a kind of error that is very likely to be detected during development, and not in production.
+> - Redis is internally simplified and faster because it does not need the ability to roll back.
+>
+> An argument against Redis point of view is that bugs happen, however it should be noted that in general the roll back does not save you from programming errors. For instance if a query increments a key by 2 instead of 1, or increments the wrong key, there is no way for a rollback mechanism to help. Given that no one can save the programmer from his or her errors, and that the kind of errors required for a Redis command to fail are unlikely to enter in production, we selected the simpler and faster approach of not supporting roll backs on errors.
+
+### 乐观锁(Optimistic locking )
+
+#### 基本概念
+
+Redis中的乐观锁是用check-and-set实现。
+
+> [WATCH](https://redis.io/commands/watch) is used to provide a check-and-set (CAS) behavior to Redis transactions.
+>
+> `WATCH`ed keys are monitored in order to detect changes against them. If at least one watched key is modified before the [EXEC](https://redis.io/commands/exec) command, the whole transaction aborts, and [EXEC](https://redis.io/commands/exec) returns a [Null reply](https://redis.io/topics/protocol#nil-reply) to notify that the transaction failed.
+
+#### 常用命令
+
+- WATCH key [key ...]    Marks the given keys to be watched for conditional execution of a transaction.
+
+- UNWATCH                  Flushes all the previously watched keys for a transaction.
+
+  ​                                    If you call EXEC or DISCARD, there's no need to manually call UNWATCH.
+
+> **WATCH explained**
+>
+> So what is WATCH really about? It is a command that will make the EXEC conditional: we are asking Redis to perform the transaction only if none of the WATCHed keys were modified. This includes modifications made by the client, like write commands, and by Redis itself, like expiration or eviction. If keys were modified between when they were WATCHed and when the EXEC was received, the entire transaction will be aborted instead.
+>
+> **NOTE * In Redis versions before 6.0.9, an expired key would not cause a transaction to be aborted. More on this * Commands within a transaction wont trigger the WATCH condition since they are only queued until the EXEC is sent.**
+>
+> WATCH can be called multiple times. Simply all the WATCH calls will have the effects to watch for changes starting from the call, up to the moment EXEC is called. You can also send any number of keys to a single WATCH call.
+>
+> When EXEC is called, all keys are UNWATCHed, regardless of whether the transaction was aborted or not. Also when a client connection is closed, everything gets UNWATCHed.
+>
+> **It is also possible to use the UNWATCH command (without arguments) in order to flush all the watched keys.** Sometimes this is useful as we optimistically lock a few keys, since possibly we need to perform a transaction to alter those keys, but after reading the current content of the keys we don't want to proceed. When this happens we just call UNWATCH so that the connection can already be used freely for new transactions.
+
+```shell
+# WATCH 乐观锁
+127.0.0.1:6379> set bal 100              # 设置 bal = 100
+OK
+127.0.0.1:6379> set out 0                # 设置 out = 0
+OK
+127.0.0.1:6379> watch bal                # WATCH bal
+OK
+127.0.0.1:6379> MULTI                    # 开启事务
+OK
+127.0.0.1:6379(TX)> DECRBY bal 10        # FROM WATCH TO EXEC, other client change the bal
+QUEUED
+127.0.0.1:6379(TX)> INCRBY out 10
+QUEUED
+127.0.0.1:6379(TX)> EXEC                 # 执行失败,return nil
+(nil)
+127.0.0.1:6379> WATCH bal                # 重新获取乐观锁
+OK
+127.0.0.1:6379> MULTI
+OK
+127.0.0.1:6379(TX)> DECRBY bal 10
+QUEUED
+127.0.0.1:6379(TX)> INCRBY out 10
+QUEUED
+127.0.0.1:6379(TX)> EXEC                 # 执行成功
+1) (integer) 100
+2) (integer) 10
+
+```
+
+> ### Using <u>WATCH</u> to implement ZPOP
+>
+> A good example to illustrate how WATCH can be used to create new atomic operations otherwise not supported by Redis is to implement ZPOP ([ZPOPMIN](https://redis.io/commands/zpopmin), [ZPOPMAX](https://redis.io/commands/zpopmax) and their blocking variants have only been added in **version 5.0**), that is a command that pops the element with the lower score from a sorted set in an atomic way. This is the simplest implementation:
+>
+> ```
+> WATCH zset
+> element = ZRANGE zset 0 0
+> MULTI
+> ZREM zset element
+> EXEC
+> ```
+
+## Jedis
+
+Jeddis是官方推荐的java 连接开发工具。
+
+### 导入依赖
+
+> ```xml
+> <dependency>
+>     <groupId>redis.clients</groupId>
+>     <artifactId>jedis</artifactId>
+>     <version>3.7.0</version>
+> </dependency>
+> ```
+
+### 开启公网访问阿里云redis
+
+- 阿里云安全策略组打开6379端口
+
+- 阿里云服务器防火墙添加6379端口
+
+  ```shell
+  firewall-cmd --list-all   # 查看防火墙设置
+  firewall-cmd --zone=public --add-port=6379/tcp --permanent # 添加6379端口
+  systemctl restart firewalld.service  # 重启防火墙
+  ```
+
+  
+
+- 修改redis config
+
+  1. 注释掉 bind
+  2. 开启密码认证。client 连接时用命令 auth <password> 登录
+
+  ```shell
+  # 修改/usr/local/bin/myconfig/redis.conf
+  #--------------------------------------------------------------------------
+  # When protected mode is on and if:
+  #
+  # 1) The server is not binding explicitly to a set of addresses using the
+  #    "bind" directive.
+  # 2) No password is configured.
+  #
+  # The server only accepts connections from clients connecting from the
+  # IPv4 and IPv6 loopback addresses 127.0.0.1 and ::1, and from Unix domain
+  # sockets.
+  #
+  # By default protected mode is enabled. You should disable it only if
+  # you are sure you want clients from other hosts to connect to Redis
+  # even if no authentication is configured, nor a specific set of interfaces
+  # are explicitly listed using the "bind" directive.
+  #--------------------------------------------------------------------------
+  
+  # 所以需要开始密码认证并且注释掉bind
+  
+  #bind 127.0.0.1 -::1     # 注释掉 bind
+  requirepass Peter008@    # 开启密码认证
+  
+  ```
+
+- 重启redis server
+
+### 测试代码
+
+```java
+// Test ping
+public class TestPing {
+    public static void main(String[] args) {
+        Jedis jedis = new Jedis("47.241.70.169",6379);
+        //Enter password to access redis
+        jedis.auth("Peter008@");
+        System.out.println(jedis.ping());
+        jedis.close();
+    }
+}
+
+// Test transaction
+public class TestTransaction {
+    public static void main(String[] args) {
+        Jedis jedis = new Jedis(REDIS_SERVER,REDIS_PORT);
+        jedis.auth(REDIS_PASSWD);
+        jedis.flushDB();
+        Transaction multi = jedis.multi();
+        try{
+            multi.set("balance","100");
+            multi.set("name","peter");
+            multi.type("balance");
+            multi.incrBy("balance",10);
+            multi.incrBy("name", 10);         // 这里会失败，但是不会返回任何exception.transaction并不会完全rollback
+            int i = 1/0;
+            multi.exec();
+        }catch(Exception e){                  // runtime exception
+            multi.discard();                  // discard the transaction
+            e.printStackTrace();
+        }finally {
+            System.out.println(jedis.get("balance"));
+            System.out.println(jedis.get("name"));
+            jedis.close();
+        }
+    }
+}
+```
+
+## SpringBoot整合
+
+SpringBoot操作数据： Spring-data jpa mongodb redis
+
+> https://spring.io/projects/spring-data-redis
+
+### 整合测试
+
+在SpringBoot2.x之后，Jedis被替换为 lettuce
+
+- Jedis: 采用的直连，多个线程操作的话，是不安全的。如果要避免不安全，就要使用Jedis Pool连接池。BIO
+- Lettuce:采用netty,实例可以在多个线程中共享，不存在线程不安全的问题。可以减少线程数量。NIO
+
+### 配置Redis
+
+Redis配置类： org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+
+Redis配置文件：org.springframework.boot.autoconfigure.data.redis.RedisProperties
+
+```java
+public class RedisAutoConfiguration {
+
+	@Bean
+	@ConditionalOnMissingBean(name = "redisTemplate")
+	@ConditionalOnSingleCandidate(RedisConnectionFactory.class)
+	public RedisTemplate<Object, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+		//默认的redis template,没有过多的设置，redis对象都需要序列化
+         //两个泛型都是Object,后面都需要强转类型
+         //我们可以自己定义 redis template
+         RedisTemplate<Object, Object> template = new RedisTemplate<>();
+         template.setConnectionFactory(redisConnectionFactory);
+         return template;
+	}
+
+	@Bean
+	@ConditionalOnMissingBean
+	@ConditionalOnSingleCandidate(RedisConnectionFactory.class)
+	public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
+		//由于String是redis中最常用的类型
+         StringRedisTemplate template = new StringRedisTemplate();
+         template.setConnectionFactory(redisConnectionFactory);
+         return template;
+	}
+
+}
+```
+
+### 连接测试
+
+```pro
+spring.redis.host=47.241.70.169
+spring.redis.port=6379
+spring.redis.password=Peter008@
+```
+
+```java
+package org.peter.coffeebucks.redis;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisTemplate;
+
+@SpringBootTest
+public class TestRedisClient {
+
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Test
+    void contextLoads(){
+        redisTemplate.opsForValue().set("name","Hello,Redis");
+        System.out.println(redisTemplate.opsForValue().get("name"));
+    }
+}
+
+```
+
+### 自定义RedisTemplate
+
+#### 存储对象序列化
+
+RedisTemplate在存储对象时，需要将对象序列化(Serializable)。
+
+> RedisTemplate在存储对象时，需要将对象序列化。否则会报错。
+>
+> ```Java
+> @Test
+> public void testRedisObject(){
+>  //Student对象需要序列化 implements Serializable 
+>  Student stu = new Student(123456,"Peter",18);
+>  redisTemplate.opsForValue().set("student1",stu);
+>  System.out.println(redisTemplate.opsForValue().get("student1"));
+> 
+> }
+> 
+> ```
+>
+> ![image-20211108110317978](Redis_images/image-20211108110317978.png)
+
+#### 自定义RedisTemplate
+
+将对象序列化之后(Serializable),由于RedisTemplate默认的是JdkSerializationRedisSerializer，在序列化之后，redis key-value存在额外的字符。所以最好使用自定义RedisTemplate来设置Serializer.
+
+```java
+//org.springframework.data.redis.core.RedisTemplate
+
+public void afterPropertiesSet(){
+    if (defaultSerializer == null) {
+			//默认使用 JdkSerializationRedisSerializer
+			defaultSerializer = new JdkSerializationRedisSerializer(
+					classLoader != null ? classLoader : this.getClass().getClassLoader());
+	}
+    // 以下四个如果未设置，都使用默认
+    //keySerializer，valueSerializer，hashKeySerializer，hashValueSerializer
+}
+```
+
+JDK默认的Serializer序列化之后会有额外的字符。
+
+```shell
+127.0.0.1:6379> keys *
+1) "\xac\xed\x00\x05t\x00\bstudent1"
+127.0.0.1:6379> get "\xac\xed\x00\x05t\x00\bstudent1"
+"\xac\xed\x00\x05sr\x00\"org.peter.coffeebucks.pojo.StudentI\x90\x8ey\x1b\xe3\x02\xb3\x02\x00\x03I\x00\x03ageJ\x00\x02idL\x00\x04namet\x00\x12Ljava/lang/String;xp\x00\x00\x00\x12\x00\x00\x00\x00\x00\x01\xe2@t\x00\x05Peter"
+127.0.0.1:6379> 
+
+```
+
+自定义RedisTemplate来设置Serializer.
+
+这里使用Jackson2JsonRedsSerializer作为value的Serializer,StringRedisSerializerz作为key的Serializer.
+
+![image-20211108112342168](Redis_images/image-20211108112342168.png)
+
+```java
+package org.peter.coffeebucks.configuration;
+
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+@Configuration
+public class RedisConfig {
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(redisConnectionFactory);
+
+        //Jackson Serializer
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+        ObjectMapper om = new ObjectMapper();
+        om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+
+        om.activateDefaultTyping(LaissezFaireSubTypeValidator.instance,
+                                ObjectMapper.DefaultTyping.NON_FINAL,
+                                JsonTypeInfo.As.WRAPPER_ARRAY);
+        jackson2JsonRedisSerializer.setObjectMapper(om);
+
+        //String Serializer
+        StringRedisSerializer stringSerializer = new StringRedisSerializer();
+
+        template.setKeySerializer(stringSerializer);
+        template.setHashKeySerializer(stringSerializer);
+        template.setValueSerializer(jackson2JsonRedisSerializer);
+        template.setHashValueSerializer(jackson2JsonRedisSerializer);
+
+        template.afterPropertiesSet();
+
+        return template;
+    }
+}
+
+```
+
+#### 测试代码
+
+```java
+package org.peter.coffeebucks.redis;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.peter.coffeebucks.pojo.Student;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.test.context.junit4.SpringRunner;
+
+
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class TestRedisClient {
+
+    @Autowired
+    @Qualifier("redisTemplate")
+    private RedisTemplate redisTemplate;
+
+    @Test
+    public void contextLoads(){
+        redisTemplate.opsForValue().set("name","Hello,Redis");
+        redisTemplate.opsForValue().set("hero","你好，超人");
+        System.out.println(redisTemplate.opsForValue().get("name"));
+        System.out.println(redisTemplate.opsForValue().get("hero"));
+    }
+
+    @Test
+    public void testRedisObject(){
+        //Student对象需要序列化 implements Serializable
+        Student stu = new Student(123456,"Peter",18);
+        redisTemplate.opsForValue().set("student1",stu);
+	    //直接可以为目标对象
+        Student student1 = (Student)redisTemplate.opsForValue().get("student1");
+
+        System.out.println("name: " + student1.getName());
+        System.out.println("id: " + student1.getId());
+        System.out.println("age: " + student1.getAge());
+
+    }
+}
+
+```
+
+查看对象在Redis中的存储格式
+
+```shell
+127.0.0.1:6379> keys *
+1) "student1"
+127.0.0.1:6379> get "student1"
+"[\"org.peter.coffeebucks.pojo.Student\",{\"id\":123456,\"name\":\"Peter\",\"age\":18}]"
+
+```
+
+#### 相关阅读
+
+> [SpringBoot整合 redisTemplate工具类 （含完整的单元测试+简单集成）](https://blog.csdn.net/sdrfengmi/article/details/103693212?utm_medium=distribute.pc_relevant.none-task-blog-2~default~baidujs_title~default-0.no_search_link&spm=1001.2101.3001.4242.1)
+>
+> [反序列化漏洞Jackson](https://0range228.github.io/%E3%80%90%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E%E3%80%91Jackson/)
 
