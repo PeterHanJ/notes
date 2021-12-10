@@ -27,7 +27,7 @@ Spring是一个轻量级的J2EE解决方案，整合众多优秀的设计模式
 
 - J2EE的解决方案
 
-<img src="Spring入门_images/image-20211206181412677.png" align="left" alt="image-20211206181412677" style="zoom:50%;" />
+<img src="Spring入门_images/image-20211206181412677.png" alt="image-20211206181412677" style="zoom:50%;" />
 
 - 整合设计模式
 
@@ -107,7 +107,7 @@ Spring是一个轻量级的J2EE解决方案，整合众多优秀的设计模式
 
       ​    `boolean containsLocalBean(String name);`
       
-     
+    
 
 
 ## Spring与日志框架的整合
@@ -233,10 +233,12 @@ Spring是一个轻量级的J2EE解决方案，整合众多优秀的设计模式
    getConnection()方法是一个静态方法，不需要StaticConnectionFactory实例
 
    ![image-20211208172202872](Spring入门_images/image-20211208172202872.png)
+   
+   ### 总结
+   
+   ![image-20211208172752629](Spring入门_images/image-20211208172752629.png)
 
-### 总结
 
-![image-20211208172752629](Spring入门_images/image-20211208172752629.png)
 
 ## 控制Spring工厂创建对象的次数
 
@@ -400,11 +402,11 @@ Spring销毁对象前，会调用对象的销毁方法，完成销毁操作
 
 - 提供一个小的配置文件（.properties)
 
-  <img src="Spring入门_images/image-20211209113017326.png" align='left' alt="image-20211209113017326" style="zoom:67%;" />
+  <img src="Spring入门_images/image-20211209113017326.png"  alt="image-20211209113017326" style="zoom:67%;" />
 
 - Spring的配置文件与小配置文件进行整合
 
-  <img src="Spring入门_images/image-20211209113110947.png" align="left" alt="image-20211209113110947" style="zoom:67%;" />
+  <img src="Spring入门_images/image-20211209113110947.png"  alt="image-20211209113110947" style="zoom:67%;" />
 
 - 在Spring配置文件中，用过${key}获取小配置文件的值
 
@@ -576,7 +578,9 @@ Spring动态代理的开发步骤：
    什么叫动态字节码技术：通过第三方动态字节码框架，在jvm中创建对应类的动态字节码，进而创建对象。当虚拟机结束时，动态字节码跟着消失。
    ```
 
-   <img src="Spring入门_images/image-20211210111702997.png" align="left" alt="image-20211210111702997" style="zoom:50%;" />
+   <img src="Spring入门_images/image-20211210111702997.png" alt="image-20211210111702997" style="zoom:50%;" />
+
+
 
 ### Spring动态代理详解
 
@@ -613,7 +617,7 @@ execution(* *(..)) -> 匹配了所有方法
 
 ##### 切入点表达式
 
-<img src="Spring入门_images/image-20211210161047177.png" align="left" alt="image-20211210161047177" style="zoom:50%;" />
+<img src="Spring入门_images/image-20211210161047177.png" alt="image-20211210161047177" style="zoom:50%;" />
 
 1. 方法切入点表达式
 
@@ -723,7 +727,7 @@ execution(* *(..)) -> 匹配了所有方法
    
    or 操作
    # login 和 register方法
-   execution(* login(..)) or execution(* register(.))
+   execution(* login(..)) or execution(* register(..))
    ```
 
    
