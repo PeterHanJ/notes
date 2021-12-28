@@ -730,7 +730,111 @@ execution(* *(..)) -> 匹配了所有方法
    execution(* login(..)) or execution(* register(..))
    ```
 
-   
 
 
 
+### AOP概念
+
+Aspect Oriented Programing 面向切面编程
+
+#### AOP的开发步骤
+
+1. 开发原始对象
+2. 额外功能
+3. 定义切入点
+4. 组装切面（额外功能+切入点）
+
+#### AOP底层实现原理
+
+##### 核心问题
+
+- AOP如何创建动态代理类
+- Spring工厂如何加工创建代理对象
+
+##### 动态代理类的创建
+
+1. JDK动态代理
+
+   Proxy.newProxyInstance(classloader,interfaces,invocationhandler) 参数详解
+
+   ![image-20211213111149857](Spring入门_images/image-20211213111149857.png)
+
+   ![image-20211213111424739](Spring入门_images/image-20211213111424739.png)
+
+   编码
+
+   ![image-20211213112432360](Spring入门_images/image-20211213112432360.png)
+
+2. CGLib的动态代理
+
+   通过父子继承的方式，创建代理类。原始类作为父类，代理类作为子类。
+
+   ![image-20211214091325609](Spring入门_images/image-20211214091325609.png)
+
+   编码
+
+   ![image-20211214092440096](Spring入门_images/image-20211214092440096.png)
+
+##### Spring工厂加工原始对象的思路
+
+![image-20211214093534141](Spring入门_images/image-20211214093534141.png)
+
+编码
+
+![image-20211214094436181](Spring入门_images/image-20211214094436181.png)
+
+![image-20211214094516184](Spring入门_images/image-20211214094516184.png)
+
+### 基于注解的AOP编程
+
+1. 基于注解AOP编程的开发步骤
+
+   - 原始对象
+   - 额外功能
+   - 切入点
+   - 组装切面
+
+   ```markdown
+       通过切面类定义了额外功能  @Around
+                  定义了切入点  @Around("execution(* login(..))")
+   ```
+
+   ![image-20211214100542971](Spring入门_images/image-20211214100542971.png)
+
+   ![image-20211214100923186](Spring入门_images/image-20211214100923186.png)
+
+2. 细节
+
+   1. 切入点复用
+
+      在切面类中定义一个方法，加上@Pointcut注解
+
+      ![image-20211214175744441](Spring入门_images/image-20211214175744441.png)
+
+   2. 动态代理的创建方式
+
+      ```xml
+      AOP底层实现 2种代理方式创建
+          JDK    通过实现接口 创建代理对象
+          CGLib  通过实现子类 创建代理对象
+          
+      默认情况下，AOP底层应用JDK动态方式创建代理
+      如果切换CGLib,需要将 proxy-target-class = "true"
+       1.基于注解的AOP开发
+       <aop:aspectj-autoproxy proxy-target-class="true"/>  
+       2.传统的AOP开发
+       <aop:config proxy-target-class="true">
+           <aop:pointcut/>
+           <aop:advisor/>
+       </aop:config>
+      ```
+
+   AOP开发中的一个坑
+
+   在同一个业务类中，进行业务方法间的相互调用。只有最外层的方法才是加入了额外功能的。内部的方法是通过普通的方式调用，调用的都是原始方法。如果希望调用方法也是代理的增强方法的话，就要通过实现ApplicationContextAware接口或得工厂，进而获得代理对象。
+
+   ![image-20211214182239338](Spring入门_images/image-20211214182239338.png)
+
+### AOP阶段知识总结
+
+![image-20211214183935905](Spring入门_images/image-20211214183935905.png)
